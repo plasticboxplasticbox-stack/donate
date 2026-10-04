@@ -1,0 +1,2 @@
+# donate
+หน้าโดเนท (Tikstudio)
