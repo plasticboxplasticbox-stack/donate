@@ -572,13 +572,13 @@ textarea.inp{resize:vertical;min-height:140px}
     $('#go').disabled = true;
     modal('<div class="spin"></div><h2>กำลังส่ง...</h2><p>อย่าเพิ่งปิดหน้านี้นะ</p>');
     const NT = C.ntfy || 'https://ntfy.sh/';
-    let done = false, es = null, timer = null;
+    let done = false, es = null, timer = null, got = false, late = null;
     const finish = (fn) => { if (done) return; done = true; try { es && es.close(); } catch (e) {} clearTimeout(timer); $('#go').disabled = false; fn(); };
     try {
       es = new EventSource(NT + C.topic + '-r' + d.id + '/sse?since=all');
       es.onmessage = (e) => {
         let m; try { m = JSON.parse(JSON.parse(e.data).message); } catch (x) { return; }
-        if (m.state === 'checking') { $('#mbox h2') && ($('#mbox h2').textContent = 'กำลังตรวจสอบ...'); return; }
+        if (m.state === 'checking') { got = true; if (!done) modal('<div class="spin"></div><h2>กำลังตรวจสอบ...</h2><p>โปรแกรมของสตรีมเมอร์ได้รับแล้ว กำลังตรวจ อย่าเพิ่งปิดหน้านี้นะ</p>'); if (timer) { clearTimeout(timer); timer = setTimeout(late, 180000); } return; }
         if (m.ok) finish(() => { confetti(); modal(`<div class="ic">💖</div><h2>โดเนทสำเร็จ!</h2><p>ขอบคุณ ${esc(name)} ที่โดเนท <b>${esc(m.amount)} ฿</b><br>${m.note ? esc(m.note) + '<br>' : ''}${esc(P.thanks || 'ข้อความของคุณกำลังขึ้นจอไลฟ์!')}</p><button>ปิด</button>`, true); ['#msg', '#ang'].forEach(s => $(s).value = ''); try { localStorage.removeItem('tksDonDraft'); } catch (e) {} });
         else if (m.wait) finish(() => modal(`<div class="ic">⏳</div><h2>รอสตรีมเมอร์ตรวจสลิป</h2><p>${esc(m.err || 'ส่งสลิปให้สตรีมเมอร์ตรวจแล้ว')}<br>ไม่ต้องส่งซ้ำนะ</p><button>ตกลง</button>`, true));
         else finish(() => fail(m.err || 'ตรวจสอบไม่ผ่าน'));
@@ -592,8 +592,9 @@ textarea.inp{resize:vertical;min-height:140px}
       const body = await seal(d);
       const r = await fetch(NT + C.topic, { method: 'PUT', body, headers: { Filename: 'd.json' } });
       if (!r.ok) throw new Error('ส่งไม่สำเร็จ (' + r.status + ')');
-      if (!done) modal('<div class="spin"></div><h2>กำลังตรวจสอบ...</h2><p>ระบบกำลังตรวจสลิป/อั่งเปา ใช้เวลาไม่เกิน 1 นาที</p>');
-      timer = setTimeout(() => finish(() => modal(`<div class="ic">⏳</div><h2>ส่งข้อมูลแล้ว</h2><p>ตอนนี้สตรีมเมอร์อาจปิดโปรแกรมอยู่ ระบบจะตรวจและขึ้นจอให้เมื่อสตรีมเมอร์เปิดโปรแกรม (ภายใน 3 ชั่วโมง) — ไม่ต้องส่งซ้ำนะ</p><button>ตกลง</button>`, true)), 75000);
+      if (!done && !got) modal('<div class="spin"></div><h2>กำลังตรวจสอบ...</h2><p>ระบบกำลังตรวจสลิป/อั่งเปา ใช้เวลาไม่เกิน 1 นาที</p>');
+      late = () => finish(() => modal(`<div class="ic">⏳</div><h2>ส่งข้อมูลแล้ว</h2><p>ตอนนี้สตรีมเมอร์อาจปิดโปรแกรมอยู่ ระบบจะตรวจและขึ้นจอให้เมื่อสตรีมเมอร์เปิดโปรแกรม (ภายใน 3 ชั่วโมง) — ไม่ต้องส่งซ้ำนะ</p><button>ตกลง</button>`, true));
+      timer = setTimeout(late, got ? 180000 : 75000);
     } catch (e) { finish(() => fail('ส่งไม่สำเร็จ ลองใหม่อีกครั้ง (' + (e.message || e) + ')')); }
   };
 })();
