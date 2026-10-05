@@ -451,7 +451,7 @@ textarea.inp{resize:vertical;min-height:140px}
       if (rec._discard) return;
       const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }), sec = Math.min(VMAX, (Date.now() - recStart) / 1000);
       if (sec < 0.8) { $('#recTxt').textContent = 'สั้นเกินไป ลองใหม่อีกครั้ง'; return; }
-      media = { type: 'voice', mime: blob.type, sec: Math.round(sec * 10) / 10, data: await toData(blob) };
+      media = { type: 'voice', mime: blob.type, sec: Math.round(sec * 10) / 10, blob };
       $('#recPlay').src = URL.createObjectURL(blob); $('#recPlay').hidden = false;
       $('#recTxt').textContent = '✅ อัดเสียงแล้ว ' + sec.toFixed(1) + ' วินาที (แตะปุ่มแดงเพื่ออัดใหม่)';
     };
@@ -466,7 +466,7 @@ textarea.inp{resize:vertical;min-height:140px}
     v.onloadedmetadata = async () => {
       if (!(v.duration > 0)) return fail('เปิดไฟล์วิดีโอนี้ไม่ได้ ลองไฟล์ .mp4');
       if (v.duration > CMAX + 0.5) { v.hidden = true; $('#vidIn').value = ''; return fail('คลิปยาว ' + v.duration.toFixed(1) + ' วินาที — ยาวได้ไม่เกิน ' + CMAX + ' วินาที'); }
-      media = { type: 'video', mime: f.type, sec: Math.round(v.duration * 10) / 10, data: await toData(f) };
+      media = { type: 'video', mime: f.type, sec: Math.round(v.duration * 10) / 10, blob: f };
       $('#vidTxt').textContent = '✅ ' + f.name + ' (' + v.duration.toFixed(1) + ' วิ) — แตะเพื่อเปลี่ยน';
     };
     v.onerror = () => fail('เปิดไฟล์วิดีโอนี้ไม่ได้ ลองไฟล์ .mp4');
@@ -484,6 +484,24 @@ textarea.inp{resize:vertical;min-height:140px}
   function confetti() { const cols = [P.accent || '#ff4fa3', P.accent2 || '#8b5cf6', '#facc15', '#22d3ee', '#4ade80']; for (let i = 0; i < 70; i++) { const c = document.createElement('div'); c.className = 'cf'; c.style.left = Math.random() * 100 + 'vw'; c.style.background = cols[i % cols.length]; c.style.animationDuration = 1.8 + Math.random() * 1.8 + 's'; c.style.animationDelay = Math.random() * .6 + 's'; document.body.appendChild(c); setTimeout(() => c.remove(), 4500); } }
   // ---- encryption (only the streamer's program can open the data)
   const b64 = (buf) => { let s = ''; const a = new Uint8Array(buf); for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode.apply(null, a.subarray(i, i + 8192)); return btoa(s); };
+  // voice / video: encrypted, cut into small pieces (the free relay takes max 2 MB per file), sent before the donation itself
+  async function upMedia(m, id, NT) {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const enc = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, await m.blob.arrayBuffer()));
+    const raw = await crypto.subtle.exportKey('raw', key), PART = 1800 * 1024, parts = [];
+    for (let i = 0, n = Math.ceil(enc.length / PART); i < n; i++) {
+      $('#mbox h2') && ($('#mbox h2').textContent = 'กำลังส่ง' + (m.type === 'video' ? 'คลิป' : 'เสียง') + '... ' + Math.round(i / n * 100) + '%');
+      let r, j = null;
+      for (let tries = 0; tries < 3 && !j; tries++) {
+        try { r = await fetch(NT + C.topic + '-m' + id, { method: 'PUT', body: enc.subarray(i * PART, (i + 1) * PART), headers: { Filename: 'p' + i + '.bin' } }); if (r.ok) j = await r.json(); } catch (e) {}
+        if (!j) await new Promise(ok => setTimeout(ok, 1500));
+      }
+      if (!j || !j.attachment || !j.attachment.url) throw new Error('ส่ง' + (m.type === 'video' ? 'คลิป' : 'เสียง') + 'ไม่สำเร็จ' + (r ? ' (' + r.status + ')' : '') + ' — ลองไฟล์ที่เล็กลง');
+      parts.push(j.attachment.url);
+    }
+    return { type: m.type, mime: m.mime, sec: m.sec, k: b64(raw), iv: b64(iv), parts, size: enc.length };
+  }
   async function seal(obj) {
     const pub = await crypto.subtle.importKey('jwk', C.pubJwk, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
     const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
@@ -526,7 +544,7 @@ textarea.inp{resize:vertical;min-height:140px}
     if (media) {
       const mmin = media.type === 'video' ? +((MED.video || {}).min) || 0 : +((MED.voice || {}).min) || 0;
       if (d.kind !== 'angpao' && amount < mmin) return fail('โดเนท' + (media.type === 'video' ? 'วิดีโอ' : 'เสียง') + 'ขั้นต่ำ ' + mmin + ' บาท');
-      d.media = media;
+      d._media = media;
     }
     if (C.preview) { modal('<div class="spin"></div><h2>กำลังตรวจสอบ...</h2><p>(ตัวอย่างในโปรแกรม)</p>'); setTimeout(() => { confetti(); modal(`<div class="ic">💖</div><h2>โดเนทสำเร็จ!</h2><p>ขอบคุณ ${esc(name)} ที่โดเนท ${amount || 100} ฿<br>(นี่คือตัวอย่าง ไม่ได้ส่งจริง)</p><button>ปิด</button>`, true); }, 1200); return; }
     $('#go').disabled = true;
@@ -547,6 +565,8 @@ textarea.inp{resize:vertical;min-height:140px}
     // wait until the answer channel is open, so a fast answer is never missed
     await new Promise(ok => { if (!es) return ok(); const t = setTimeout(ok, 3000); es.onopen = () => { clearTimeout(t); ok(); }; });
     try {
+      if (d._media) { d.media = await upMedia(d._media, d.id, NT); }
+      delete d._media;
       const body = await seal(d);
       const r = await fetch(NT + C.topic, { method: 'PUT', body, headers: { Filename: 'd.json' } });
       if (!r.ok) throw new Error('ส่งไม่สำเร็จ (' + r.status + ')');
