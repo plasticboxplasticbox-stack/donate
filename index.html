@@ -190,6 +190,9 @@ textarea.inp{resize:vertical;min-height:140px}
         <div class="panel" id="medVideo" hidden style="margin-top:0">
           <label class="drop" style="margin-top:0"><input type="file" id="vidIn" accept="video/mp4,video/webm,video/quicktime,video/*"><div class="dt" id="vidTxt">🎬 แตะเพื่อเลือกคลิปวิดีโอ</div></label>
           <video id="vidPrev" controls playsinline hidden style="width:100%;max-height:260px;border-radius:12px;margin-top:10px;background:#000"></video>
+          <div class="hint" style="margin:12px 0 6px;text-align:center">— หรือ —</div>
+          <input class="inp" id="vidLink" placeholder="🔗 วางลิงก์คลิป YouTube หรือ TikTok" autocomplete="off">
+          <div class="hint" id="vidLinkTxt">เช่น youtube.com/watch?v=… · youtu.be/… · youtube.com/shorts/… · tiktok.com/@ชื่อ/video/… · vt.tiktok.com/…</div>
         </div>
       </div>
       <div id="tBox" hidden>
@@ -434,7 +437,7 @@ textarea.inp{resize:vertical;min-height:140px}
   document.querySelectorAll('#medTabs button').forEach(b => b.onclick = () => {
     medType = b.dataset.t; media = null; stopRec(true); $('#optMediaTxt').textContent = medType === 'voice' ? 'อัดเสียง' : medType === 'video' ? 'วิดีโอ' : 'ไม่ส่งสื่อ';
     document.querySelectorAll('#medTabs button').forEach(x => x.classList.toggle('on', x === b));
-    $('#medVoice').hidden = medType !== 'voice'; $('#medVideo').hidden = medType !== 'video';
+    $('#medVoice').hidden = medType !== 'voice'; $('#medVideo').hidden = medType !== 'video'; if (medType === 'video' && $('#vidLink').value.trim()) $('#vidLink').dispatchEvent(new Event('input'));
     $('#recPlay').hidden = true; $('#vidPrev').hidden = true; $('#vidIn').value = '';
   });
   const toData = (blob) => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(blob); });
@@ -471,6 +474,25 @@ textarea.inp{resize:vertical;min-height:140px}
     };
     v.onerror = () => fail('เปิดไฟล์วิดีโอนี้ไม่ได้ ลองไฟล์ .mp4');
   });
+  // ---- or a YouTube / TikTok link (the program plays it on the live screen)
+  const LINK_RX = [
+    [/^(?:https?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|live\/|embed\/)([A-Za-z0-9_-]{11})/i, 'yt'],
+    [/^(?:https?:\/\/)?youtu\.be\/([A-Za-z0-9_-]{11})/i, 'yt'],
+    [/^(?:https?:\/\/)?(?:www\.|m\.)?tiktok\.com\/@[^\/\s]+\/video\/(\d{8,25})/i, 'tt'],
+    [/^(?:https?:\/\/)?(?:www\.)?tiktok\.com\/(?:embed\/v2\/|player\/v1\/|v\/)(\d{8,25})/i, 'tt'],
+    [/^(?:https?:\/\/)?(?:vt|vm)\.tiktok\.com\/([A-Za-z0-9]{5,15})\/?/i, 'tts'],
+    [/^(?:https?:\/\/)?(?:www\.)?tiktok\.com\/t\/([A-Za-z0-9]{5,15})\/?/i, 'tts'],
+  ];
+  function parseLink(v) { v = String(v || '').trim(); for (const [rx, site] of LINK_RX) { const m = rx.exec(v); if (m) return { site, id: m[1], url: v.startsWith('http') ? v : 'https://' + v }; } return null; }
+  $('#vidLink').addEventListener('input', () => {
+    const v = $('#vidLink').value.trim(), L = parseLink(v);
+    if (!v) { if (media && media.type === 'link') media = null; $('#vidLinkTxt').textContent = 'วางลิงก์คลิป YouTube หรือ TikTok'; return; }
+    if (!L) { if (media && media.type === 'link') media = null; $('#vidLinkTxt').innerHTML = '<span class="bad">ลิงก์นี้ใช้ไม่ได้ — ใส่ได้เฉพาะลิงก์คลิป YouTube หรือ TikTok</span>'; return; }
+    media = { type: 'link', site: L.site, id: L.id, url: L.url, sec: CMAX };
+    $('#vidIn').value = ''; $('#vidPrev').hidden = true;
+    $('#vidLinkTxt').innerHTML = '<span class="ok">✅ ลิงก์คลิป ' + (L.site === 'yt' ? 'YouTube' : 'TikTok') + ' — ขึ้นจอได้นานสุด ' + CMAX + ' วินาที</span>';
+  });
+  $('#vidIn').addEventListener('change', () => { if ($('#vidIn').files[0]) { $('#vidLink').value = ''; } });
   // ---- live timer: viewer chooses to add or take away time
   let timerSel = '';
   if (C.timer && C.timer.on) {
@@ -542,8 +564,8 @@ textarea.inp{resize:vertical;min-height:140px}
     if (timerSel) d.timer = timerSel;
     if (medType && !media) return fail(medType === 'voice' ? 'ยังไม่ได้อัดเสียง (หรือเลือก “ไม่แนบ”)' : 'ยังไม่ได้เลือกวิดีโอ (หรือเลือก “ไม่แนบ”)');
     if (media) {
-      const mmin = media.type === 'video' ? +((MED.video || {}).min) || 0 : +((MED.voice || {}).min) || 0;
-      if (d.kind !== 'angpao' && amount < mmin) return fail('โดเนท' + (media.type === 'video' ? 'วิดีโอ' : 'เสียง') + 'ขั้นต่ำ ' + mmin + ' บาท');
+      const mmin = media.type !== 'voice' ? +((MED.video || {}).min) || 0 : +((MED.voice || {}).min) || 0;
+      if (d.kind !== 'angpao' && amount < mmin) return fail('โดเนท' + (media.type !== 'voice' ? 'วิดีโอ' : 'เสียง') + 'ขั้นต่ำ ' + mmin + ' บาท');
       d._media = media;
     }
     if (C.preview) { modal('<div class="spin"></div><h2>กำลังตรวจสอบ...</h2><p>(ตัวอย่างในโปรแกรม)</p>'); setTimeout(() => { confetti(); modal(`<div class="ic">💖</div><h2>โดเนทสำเร็จ!</h2><p>ขอบคุณ ${esc(name)} ที่โดเนท ${amount || 100} ฿<br>(นี่คือตัวอย่าง ไม่ได้ส่งจริง)</p><button>ปิด</button>`, true); }, 1200); return; }
@@ -565,7 +587,7 @@ textarea.inp{resize:vertical;min-height:140px}
     // wait until the answer channel is open, so a fast answer is never missed
     await new Promise(ok => { if (!es) return ok(); const t = setTimeout(ok, 3000); es.onopen = () => { clearTimeout(t); ok(); }; });
     try {
-      if (d._media) { d.media = await upMedia(d._media, d.id, NT); }
+      if (d._media) { d.media = d._media.type === 'link' ? { type: 'link', site: d._media.site, id: d._media.id, url: d._media.url } : await upMedia(d._media, d.id, NT); }
       delete d._media;
       const body = await seal(d);
       const r = await fetch(NT + C.topic, { method: 'PUT', body, headers: { Filename: 'd.json' } });
