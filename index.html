@@ -181,7 +181,7 @@ textarea.inp{resize:vertical;min-height:140px}
         <button class="opt" type="button" id="optMedia"><div class="oi">📎</div><div><b>ส่งสื่อขึ้นจอ</b><small id="optMediaTxt">ไม่ส่งสื่อ</small><br><span class="tag" id="optMediaTag">เลือกได้ 1 ชิ้น</span></div><span class="ar">›</span></button>
       </div>
       <div id="mediaBox" hidden>
-        <div class="mini" id="medTabs"><button data-t="" class="on" type="button">ไม่แนบ</button><button data-t="voice" type="button">🎤 อัดเสียง</button><button data-t="video" type="button">🎬 วิดีโอ</button></div>
+        <div class="mini" id="medTabs"><button data-t="" class="on" type="button">ไม่แนบ</button><button data-t="voice" type="button">🎤 อัดเสียง</button><button data-t="video" type="button">🎬 วิดีโอ</button><button data-t="link" type="button">🔗 ลิงก์คลิป</button></div>
         <div class="panel" id="medVoice" hidden style="margin-top:0;text-align:center">
           <button class="rec" id="recBtn" type="button"><span></span></button>
           <div id="recTxt" class="hint" style="margin-top:6px">แตะเพื่อเริ่มอัดเสียง</div>
@@ -190,9 +190,11 @@ textarea.inp{resize:vertical;min-height:140px}
         <div class="panel" id="medVideo" hidden style="margin-top:0">
           <label class="drop" style="margin-top:0"><input type="file" id="vidIn" accept="video/mp4,video/webm,video/quicktime,video/*"><div class="dt" id="vidTxt">🎬 แตะเพื่อเลือกคลิปวิดีโอ</div></label>
           <video id="vidPrev" controls playsinline hidden style="width:100%;max-height:260px;border-radius:12px;margin-top:10px;background:#000"></video>
-          <div class="hint" style="margin:12px 0 6px;text-align:center">— หรือ —</div>
-          <input class="inp" id="vidLink" placeholder="🔗 วางลิงก์คลิป YouTube หรือ TikTok" autocomplete="off">
-          <div class="hint" id="vidLinkTxt">เช่น youtube.com/watch?v=… · youtu.be/… · youtube.com/shorts/… · tiktok.com/@ชื่อ/video/… · vt.tiktok.com/…</div>
+        </div>
+        <div class="panel" id="medLink" hidden style="margin-top:0">
+          <div class="lbl" style="margin-top:0">🔗 วางลิงก์คลิป YouTube หรือ TikTok</div>
+          <input class="inp" id="vidLink" placeholder="https://www.tiktok.com/@…/video/…  หรือ  https://youtu.be/…" autocomplete="off">
+          <div class="hint" id="vidLinkTxt">ใช้ได้: youtube.com/watch?v=… · youtu.be/… · youtube.com/shorts/… · tiktok.com/@ชื่อ/video/… · vt.tiktok.com/…</div>
         </div>
       </div>
       <div id="tBox" hidden>
@@ -430,14 +432,14 @@ textarea.inp{resize:vertical;min-height:140px}
     $('#optMediaTag').textContent = [MED.voice && MED.voice.on ? '🎤 เสียง ' + VMAX + ' วิ' + (+MED.voice.min ? ' (' + MED.voice.min + '฿ ขึ้นไป)' : '') : '', MED.video && MED.video.on ? '🎬 วิดีโอ ' + CMAX + ' วิ' + (+MED.video.min ? ' (' + MED.video.min + '฿ ขึ้นไป)' : '') : ''].filter(Boolean).join(' · ');
     $('#optMedia').onclick = () => { $('#mediaBox').hidden = !$('#mediaBox').hidden; };
     if (!(MED.voice && MED.voice.on)) document.querySelector('#medTabs [data-t="voice"]').remove();
-    if (!(MED.video && MED.video.on)) document.querySelector('#medTabs [data-t="video"]').remove();
+    if (!(MED.video && MED.video.on)) { document.querySelector('#medTabs [data-t="video"]').remove(); document.querySelector('#medTabs [data-t="link"]').remove(); }
     $('#recTxt').textContent = 'แตะเพื่อเริ่มอัดเสียง (สูงสุด ' + VMAX + ' วินาที)';
     $('#vidTxt').textContent = '🎬 แตะเพื่อเลือกคลิปวิดีโอ (ยาวไม่เกิน ' + CMAX + ' วินาที · ไม่เกิน ' + CMB + ' MB)';
   }
   document.querySelectorAll('#medTabs button').forEach(b => b.onclick = () => {
-    medType = b.dataset.t; media = null; stopRec(true); $('#optMediaTxt').textContent = medType === 'voice' ? 'อัดเสียง' : medType === 'video' ? 'วิดีโอ' : 'ไม่ส่งสื่อ';
+    medType = b.dataset.t; media = null; stopRec(true); $('#optMediaTxt').textContent = medType === 'voice' ? 'อัดเสียง' : medType === 'video' ? 'วิดีโอ' : medType === 'link' ? 'ลิงก์คลิป YouTube/TikTok' : 'ไม่ส่งสื่อ';
     document.querySelectorAll('#medTabs button').forEach(x => x.classList.toggle('on', x === b));
-    $('#medVoice').hidden = medType !== 'voice'; $('#medVideo').hidden = medType !== 'video'; if (medType === 'video' && $('#vidLink').value.trim()) $('#vidLink').dispatchEvent(new Event('input'));
+    $('#medVoice').hidden = medType !== 'voice'; $('#medVideo').hidden = medType !== 'video'; $('#medLink').hidden = medType !== 'link'; if (medType === 'link' && $('#vidLink').value.trim()) $('#vidLink').dispatchEvent(new Event('input'));
     $('#recPlay').hidden = true; $('#vidPrev').hidden = true; $('#vidIn').value = '';
   });
   const toData = (blob) => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(blob); });
@@ -489,10 +491,8 @@ textarea.inp{resize:vertical;min-height:140px}
     if (!v) { if (media && media.type === 'link') media = null; $('#vidLinkTxt').textContent = 'วางลิงก์คลิป YouTube หรือ TikTok'; return; }
     if (!L) { if (media && media.type === 'link') media = null; $('#vidLinkTxt').innerHTML = '<span class="bad">ลิงก์นี้ใช้ไม่ได้ — ใส่ได้เฉพาะลิงก์คลิป YouTube หรือ TikTok</span>'; return; }
     media = { type: 'link', site: L.site, id: L.id, url: L.url, sec: CMAX };
-    $('#vidIn').value = ''; $('#vidPrev').hidden = true;
     $('#vidLinkTxt').innerHTML = '<span class="ok">✅ ลิงก์คลิป ' + (L.site === 'yt' ? 'YouTube' : 'TikTok') + ' — ขึ้นจอได้นานสุด ' + CMAX + ' วินาที</span>';
   });
-  $('#vidIn').addEventListener('change', () => { if ($('#vidIn').files[0]) { $('#vidLink').value = ''; } });
   // ---- live timer: viewer chooses to add or take away time
   let timerSel = '';
   if (C.timer && C.timer.on) {
@@ -562,7 +562,7 @@ textarea.inp{resize:vertical;min-height:140px}
       d.kind = 'slip'; d.slip = s;
     }
     if (timerSel) d.timer = timerSel;
-    if (medType && !media) return fail(medType === 'voice' ? 'ยังไม่ได้อัดเสียง (หรือเลือก “ไม่แนบ”)' : 'ยังไม่ได้เลือกวิดีโอ (หรือเลือก “ไม่แนบ”)');
+    if (medType && !media) return fail(medType === 'voice' ? 'ยังไม่ได้อัดเสียง (หรือเลือก “ไม่แนบ”)' : medType === 'link' ? 'ยังไม่ได้ใส่ลิงก์คลิป YouTube / TikTok (หรือเลือก “ไม่แนบ”)' : 'ยังไม่ได้เลือกวิดีโอ (หรือเลือก “ไม่แนบ”)');
     if (media) {
       const mmin = media.type !== 'voice' ? +((MED.video || {}).min) || 0 : +((MED.voice || {}).min) || 0;
       if (d.kind !== 'angpao' && amount < mmin) return fail('โดเนท' + (media.type !== 'voice' ? 'วิดีโอ' : 'เสียง') + 'ขั้นต่ำ ' + mmin + ' บาท');
